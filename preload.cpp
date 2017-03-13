@@ -1,6 +1,6 @@
 /* -*- Mode: C; indent-tabs-mode: nil; tab-width: 4 -*-
  *
- * Copyright (C) 2015-2016 Canonical, Ltd.
+ * Copyright (C) 2015-2017 Canonical, Ltd.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,7 +15,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
+
 #define __USE_GNU
 
 #include <dirent.h>
@@ -112,7 +115,7 @@ void constructor()
         size_t plen = strlen (p);
         if (plen > libnamelen && p[0] == '/' && strncmp (p + plen - libnamelen - 1, "/" SNAPCRAFT_LIBNAME, libnamelen + 1) == 0) {
             ++num_saved_ld_preloads;
-            saved_ld_preloads = realloc (saved_ld_preloads, (num_saved_ld_preloads + 1) * sizeof (char *));
+            saved_ld_preloads = static_cast<char **>(realloc (saved_ld_preloads, (num_saved_ld_preloads + 1) * sizeof (char *)));
             saved_ld_preloads[num_saved_ld_preloads - 1] = strdup (p);
             saved_ld_preloads[num_saved_ld_preloads] = NULL;
         }
@@ -130,7 +133,7 @@ redirect_writable_path (const char *pathname, const char *basepath)
         return strdup (basepath);
     }
 
-    redirected_pathname = malloc (PATH_MAX);
+    redirected_pathname = static_cast<char *> (malloc (PATH_MAX));
 
     if (basepath[strlen (basepath) - 1] == '/') {
         chop = 1;
@@ -182,7 +185,7 @@ redirect_path_full (const char *pathname, int check_parent, int only_if_absolute
 
     // Some apps want to open shared memory in random locations. Here we will confine it to the
     // snaps allowed path.
-    redirected_pathname = malloc (PATH_MAX);
+    redirected_pathname = static_cast<char *> (malloc (PATH_MAX));
 
     if (strncmp (pathname, "/dev/shm/", 9) == 0) {
         snprintf(redirected_pathname, PATH_MAX - 1, "%s.%s",
@@ -418,6 +421,8 @@ NAME (int dirfp, const char *path, int flags, ...) \
     return result; \
 }
 
+extern "C"
+{
 REDIRECT_1_2(FILE *, fopen, const char *)
 REDIRECT_1_1(int, unlink)
 REDIRECT_2_3_AT(int, unlinkat, int, int)
@@ -433,6 +438,7 @@ REDIRECT_1_2(int, creat, mode_t)
 REDIRECT_1_2(int, creat64, mode_t)
 REDIRECT_1_2(int, truncate, off_t)
 REDIRECT_2_2(char *, bindtextdomain, const char *)
+REDIRECT_2_3(int, xstat, int, struct stat *)
 REDIRECT_2_3(int, __xstat, int, struct stat *)
 REDIRECT_2_3(int, __xstat64, int, struct stat64 *)
 REDIRECT_2_3(int, __lxstat, int, struct stat *)
@@ -461,8 +467,9 @@ REDIRECT_OPEN(open64)
 REDIRECT_OPEN_AT(openat)
 REDIRECT_OPEN_AT(openat64)
 REDIRECT_2_3(int, inotify_add_watch, int, uint32_t)
+}
 
-int
+extern "C" int
 scandir (const char *dirp, struct dirent ***namelist, int (*filter)(const struct dirent *), int (*compar)(const struct dirent **, const struct dirent **))
 {
     int (*_scandir) (const char *dirp, struct dirent ***namelist, int (*filter)(const struct dirent *), int (*compar)(const struct dirent **, const struct dirent **));
@@ -478,7 +485,7 @@ scandir (const char *dirp, struct dirent ***namelist, int (*filter)(const struct
     return ret;
 }
 
-int
+extern "C" int
 scandirat (int dirfd, const char *dirp, struct dirent ***namelist, int (*filter)(const struct dirent *), int (*compar)(const struct dirent **, const struct dirent **))
 {
     int (*_scandirat) (int dirfd, const char *dirp, struct dirent ***namelist, int (*filter)(const struct dirent *), int (*compar)(const struct dirent **, const struct dirent **));
@@ -526,7 +533,7 @@ socket_action (int (*action) (int sockfd, const struct sockaddr *addr, socklen_t
     return result;
 }
 
-int
+extern "C" int
 bind (int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
     int (*_bind) (int sockfd, const struct sockaddr *addr, socklen_t addrlen);
@@ -535,7 +542,7 @@ bind (int sockfd, const struct sockaddr *addr, socklen_t addrlen)
     return socket_action (_bind, sockfd, addr, addrlen);
 }
 
-int
+extern "C" int
 connect (int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
     int (*_connect) (int sockfd, const struct sockaddr *addr, socklen_t addrlen);
@@ -544,7 +551,7 @@ connect (int sockfd, const struct sockaddr *addr, socklen_t addrlen)
     return socket_action (_connect, sockfd, addr, addrlen);
 }
 
-void *
+extern "C" void *
 dlopen (const char *path, int mode)
 {
     void *(*_dlopen) (const char *path, int mode);
@@ -587,12 +594,12 @@ ensure_in_ld_preload (char *ld_preload, const char *to_be_added)
         free (ld_preload_copy);
 
         if (!found) {
-            ld_preload = realloc (ld_preload, strlen (to_be_added) + strlen (ld_preload) + 2);
+            ld_preload = static_cast<char *>(realloc (ld_preload, strlen (to_be_added) + strlen (ld_preload) + 2));
             strcat (ld_preload, ":");
             strcat (ld_preload, to_be_added);
         }
     } else {
-        ld_preload = realloc (ld_preload, strlen (to_be_added) + LD_PRELOAD_LEN + 2);
+        ld_preload = static_cast<char *>(realloc (ld_preload, strlen (to_be_added) + LD_PRELOAD_LEN + 2));
         strncpy (ld_preload, LD_PRELOAD "=", LD_PRELOAD_LEN + 1);
         strcat (ld_preload, to_be_added);
     }
@@ -612,7 +619,7 @@ execve_copy_envp (char *const envp[])
         // this space intentionally left blank
     }
 
-    new_envp = malloc (sizeof (char *) * (num_elements + 3));
+    new_envp = static_cast<char **>(malloc (sizeof (char *) * (num_elements + 3)));
 
     for (i = 0; i < num_elements; i++) {
         new_envp[i] = strdup (envp[i]);
@@ -632,7 +639,7 @@ execve_copy_envp (char *const envp[])
     }
 
     if (saved_snapcraft_preload) {
-        snapcraft_preload = malloc (saved_snapcraft_preload_len + LITERAL_STRLEN (SNAPCRAFT_PRELOAD) + 2);
+        snapcraft_preload = static_cast<char *>(malloc (saved_snapcraft_preload_len + LITERAL_STRLEN (SNAPCRAFT_PRELOAD) + 2));
         strncpy (snapcraft_preload, SNAPCRAFT_PRELOAD "=", LITERAL_STRLEN (SNAPCRAFT_PRELOAD) + 1);
         strncat (snapcraft_preload, saved_snapcraft_preload, saved_snapcraft_preload_len);
         new_envp[i++] = snapcraft_preload;
@@ -659,7 +666,7 @@ execve32_wrapper (int (*_execve) (const char *path, char *const argv[], char *co
     for (num_elements = 0; argv && argv[num_elements]; num_elements++) {
         // this space intentionally left blank
     }
-    new_argv = malloc (sizeof (char *) * (num_elements + 2));
+    new_argv = static_cast<char **>(malloc (sizeof (char *) * (num_elements + 2)));
     new_argv[0] = path;
     for (i = 0; i < num_elements; i++) {
         new_argv[i + 1] = argv[i];
@@ -722,19 +729,19 @@ execve_wrapper (const char *func, const char *path, char *const argv[], char *co
     return result;
 }
 
-int
+extern "C" int
 execv (const char *path, char *const argv[])
 {
     return execve (path, argv, environ);
 }
 
-int
+extern "C" int
 execve (const char *path, char *const argv[], char *const envp[])
 {
     return execve_wrapper ("execve", path, argv, envp);
 }
 
-int
+extern "C" int
 __execve (const char *path, char *const argv[], char *const envp[])
 {
     return execve_wrapper ("__execve", path, argv, envp);

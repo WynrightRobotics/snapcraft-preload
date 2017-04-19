@@ -25,7 +25,9 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <fstream>
 #include <functional>
+#include <pwd.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -54,6 +56,8 @@ char *saved_snapcraft_preload = NULL;
 size_t saved_snapcraft_preload_len = 0;
 char *saved_varlib = NULL;
 size_t saved_varlib_len = 0;
+char *saved_user_home = NULL;
+size_t saved_user_home_len = 0;
 char *saved_snap_name = NULL;
 size_t saved_snap_name_len = 0;
 char *saved_snap_revision = NULL;
@@ -97,6 +101,7 @@ getenvdup (const char *varname, size_t *envlen)
 void constructor()
 {
     char *ld_preload_copy, *p, *savedptr = NULL;
+    struct passwd *user_passwd;
     size_t libnamelen;
 
     _access = (decltype(_access)) dlsym (RTLD_NEXT, "access");
@@ -119,6 +124,10 @@ void constructor()
     saved_snap_revision = getenvdup ("SNAP_REVISION", &saved_snap_revision_len);
     saved_snap_user_data = getenvdup ("SNAP_USER_DATA", &saved_snap_user_data_len);
     saved_snap_user_common = getenvdup ("SNAP_USER_COMMON", &saved_snap_user_common_len);
+
+    user_passwd = getpwuid (getuid ());
+    saved_user_home = strdup (user_passwd->pw_dir);
+    saved_user_home_len = saved_user_home ? strlen (saved_user_home) : 0;
 
     if (snprintf(saved_snap_devshm, sizeof saved_snap_devshm, "/dev/shm/snap.%s", saved_snap_name) < 0){
         perror("cannot construct path /dev/shm/snap.$SNAP_NAME");
@@ -204,6 +213,14 @@ redirect_path_full (const char *pathname, bool check_parent, bool only_if_absolu
     if (strncmp (pathname, saved_snap_user_data, saved_snap_user_data_len) == 0 ||
         strncmp (pathname, saved_snap_user_common, saved_snap_user_common_len) == 0) {
         return strdup (pathname);
+    }
+
+    if (saved_user_home && strncmp (pathname, saved_user_home, saved_user_home_len) == 0) {
+        if (std::ifstream (pathname).good ()) {
+            return strdup (pathname);
+        } else {
+            return redirect_writable_path (pathname + saved_user_home_len, saved_snap_user_data);
+        }
     }
 
     // Some apps want to open shared memory in random locations. Here we will confine it to the

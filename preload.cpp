@@ -216,6 +216,7 @@ redirect_path_full (const char *pathname, bool check_parent, bool only_if_absolu
     }
 
     if (saved_user_home && strncmp (pathname, saved_user_home, saved_user_home_len) == 0) {
+        // We can't use access here as per bug LP: #1655435.
         if (std::ifstream (pathname).good ()) {
             return strdup (pathname);
         } else {

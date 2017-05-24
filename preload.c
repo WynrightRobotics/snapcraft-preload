@@ -511,7 +511,7 @@ socket_action (int (*action) (int sockfd, const struct sockaddr *addr, socklen_t
     }
 
     int result = 0;
-    char *new_path = redirect_path (un_addr->sun_path);
+    char *new_path = redirect_writable_path(un_addr->sun_path, saved_varlib);
 
     if (strncmp (un_addr->sun_path, new_path, PATH_MAX) == 0) {
         result = action (sockfd, addr, addrlen);
